@@ -1,39 +1,58 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-180.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Envoi">
   <meta name="theme-color" content="#ffffff">
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Admin</title>
   <style>
     body { font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 16px; }
-    input, button { width: 100%; font-size: 16px; padding: 12px; margin-top: 12px; box-sizing: border-box; }
+    label { display: block; margin-top: 16px; font-size: 14px; color: #666; }
+    input, button { width: 100%; font-size: 16px; padding: 12px; margin-top: 4px; box-sizing: border-box; }
+    button { margin-top: 20px; }
     #message { margin-top: 12px; color: green; }
   </style>
 </head>
 <body>
-  <h1>Adresses de destination</h1>
-  <input id="adresse1" type="email" placeholder="Adresse 1">
-  <input id="adresse2" type="email" placeholder="Adresse 2">
+  <h1>Réglages</h1>
+
+  <label for="adresse1">Adresse 1</label>
+  <input id="adresse1" type="email">
+
+  <label for="adresse2">Adresse 2</label>
+  <input id="adresse2" type="email">
+
+  <label for="serveur">Adresse du serveur</label>
+  <input id="serveur" type="url" placeholder="http://127.0.0.1:5000">
+
+  <label for="token">Mot de passe d'accès</label>
+  <input id="token" type="password" autocomplete="off">
+
   <button id="enregistrer">Enregistrer</button>
   <div id="message"></div>
   <p><a href="envoi.html">← Retour</a></p>
 
   <script>
-    const champ1 = document.getElementById("adresse1");
-    const champ2 = document.getElementById("adresse2");
+    const cles = ["adresse1", "adresse2", "serveur", "token"];
 
-    // Au chargement : on relit ce qui est dans le tiroir
-    champ1.value = localStorage.getItem("adresse1") || "";
-    champ2.value = localStorage.getItem("adresse2") || "";
+    // Au chargement : on relit le tiroir
+    cles.forEach(function (cle) {
+      document.getElementById(cle).value = localStorage.getItem(cle) || "";
+    });
 
     document.getElementById("enregistrer").onclick = function () {
-      localStorage.setItem("adresse1", champ1.value.trim());
-      localStorage.setItem("adresse2", champ2.value.trim());
+      cles.forEach(function (cle) {
+        let valeur = document.getElementById(cle).value.trim();
+        if (cle === "serveur") {
+          valeur = valeur.replace(/\/+$/, "");
+        }
+        localStorage.setItem(cle, valeur);
+        document.getElementById(cle).value = valeur;
+      });
       document.getElementById("message").textContent = "Enregistré ✔";
     };
   </script>

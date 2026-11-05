@@ -1,20 +1,20 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Envoi rapide</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-180.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Envoi">
   <meta name="theme-color" content="#ffffff">
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Envoi rapide</title>
   <style>
     body { font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 16px 16px 90px; }
     textarea { width: 100%; height: 200px; font-size: 16px; box-sizing: border-box; }
     select, button { width: 100%; font-size: 16px; padding: 12px; margin-top: 12px; }
     button:disabled { opacity: 0.4; }
-    /* NOUVEAU : barre fixe en bas de l'écran */
+    #statut { margin-top: 12px; min-height: 1.4em; }
     #barre-bas { position: fixed; bottom: 0; left: 0; right: 0; background: white;
                  padding: 8px 16px 16px; border-top: 1px solid #ddd; }
     #nom-fichier { font-size: 14px; color: #666; margin-top: 8px; }
@@ -22,14 +22,15 @@
 </head>
 <body>
   <div style="text-align:right"><a href="admin.html">⚙ Admin</a></div>
+
   <select id="destinataire">
-  <option value="">-- Choisir un destinataire --</option>
+    <option value="">-- Choisir un destinataire --</option>
   </select>
 
   <textarea id="texte" placeholder="Votre message..."></textarea>
   <button id="send" disabled>Send</button>
+  <div id="statut"></div>
 
-  <!-- NOUVEAU : bouton pièce jointe en bas -->
   <div id="barre-bas">
     <input type="file" id="fichier" hidden>
     <button id="joindre">📎 Joindre un fichier</button>
@@ -39,26 +40,25 @@
   <script>
     const liste = document.getElementById("destinataire");
     const bouton = document.getElementById("send");
+    const zoneTexte = document.getElementById("texte");
+    const fichier = document.getElementById("fichier");
+    const joindre = document.getElementById("joindre");
+    const nomFichier = document.getElementById("nom-fichier");
 
-   // Remplir la liste avec les adresses du tiroir
-   ["adresse1", "adresse2"].forEach(function (cle) {
-     const adresse = localStorage.getItem(cle);
-     if (adresse) {
-       const option = document.createElement("option");
-      option.value = adresse;
-      option.textContent = adresse;
-      liste.appendChild(option);
-     }
-   });
+    // Remplir la liste avec les adresses du tiroir
+    ["adresse1", "adresse2"].forEach(function (cle) {
+      const adresse = localStorage.getItem(cle);
+      if (adresse) {
+        const option = document.createElement("option");
+        option.value = adresse;
+        option.textContent = adresse;
+        liste.appendChild(option);
+      }
+    });
 
     liste.onchange = function () {
       bouton.disabled = (liste.value === "");
     };
-
-    // NOUVEAU
-    const fichier = document.getElementById("fichier");
-    const joindre = document.getElementById("joindre");
-    const nomFichier = document.getElementById("nom-fichier");
 
     joindre.onclick = function () {
       fichier.click();
@@ -70,6 +70,56 @@
       } else {
         nomFichier.textContent = "Aucun fichier";
       }
+    };
+
+    // NOUVEAU : afficher un message de statut (vert ou rouge)
+    function afficher(message, estErreur) {
+      const zone = document.getElementById("statut");
+      zone.textContent = message;
+      zone.style.color = estErreur ? "crimson" : "green";
+    }
+
+    // NOUVEAU : le bouton Send envoie vraiment le colis
+    bouton.onclick = async function () {
+      const serveur = localStorage.getItem("serveur") || "";
+      const token = localStorage.getItem("token") || "";
+
+      if (!serveur || !token) {
+        afficher("Renseigne d'abord le serveur et le mot de passe dans ⚙ Admin.", true);
+        return;
+      }
+
+      const colis = new FormData();
+      colis.append("destinataire", liste.value);
+      colis.append("texte", zoneTexte.value);
+      if (fichier.files.length > 0) {
+        colis.append("fichier", fichier.files[0]);
+      }
+
+      bouton.disabled = true;
+      afficher("Envoi en cours...", false);
+
+      try {
+        const reponse = await fetch(serveur + "/envoyer", {
+          method: "POST",
+          headers: { "X-Access-Token": token },
+          body: colis
+        });
+        const resultat = await reponse.json();
+
+        if (reponse.ok && resultat.ok) {
+          afficher("Message envoyé ✔", false);
+          zoneTexte.value = "";
+          fichier.value = "";
+          nomFichier.textContent = "Aucun fichier";
+        } else {
+          afficher("Échec : " + (resultat.erreur || "erreur inconnue"), true);
+        }
+      } catch (e) {
+        afficher("Serveur injoignable", true);
+      }
+
+      bouton.disabled = (liste.value === "");
     };
   </script>
 </body>

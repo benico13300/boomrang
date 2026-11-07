@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Envoi rapide</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-180.png">
@@ -10,93 +10,151 @@
   <meta name="apple-mobile-web-app-title" content="Envoi">
   <meta name="theme-color" content="#ffffff">
   <style>
-    body { font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 16px 16px 90px; }
-    textarea { width: 100%; height: 200px; font-size: 16px; box-sizing: border-box; }
-    select, button { width: 100%; font-size: 16px; padding: 12px; margin-top: 12px; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, system-ui, sans-serif;
+      background: #fff; color: #222;
+      display: flex; flex-direction: column;
+      max-width: 480px; margin: 0 auto;
+      padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    }
+    #haut { text-align: right; padding: 8px 0 4px; font-size: 14px; }
+    #haut a { color: #888; text-decoration: none; }
+
+    /* La zone de texte prend toute la place disponible */
+    #texte {
+      flex: 1; width: 100%; min-height: 0;
+      font-family: inherit; font-size: 17px; line-height: 1.4;
+      border: 1px solid #ddd; border-radius: 12px;
+      padding: 14px; resize: none; outline: none;
+    }
+    #texte:focus { border-color: #1f6feb; }
+
+    #statut { min-height: 1.4em; padding: 8px 2px 0; font-size: 15px; }
+
+    #barre-bas { padding: 8px 0 16px; }
+    button {
+      width: 100%; font-family: inherit; font-size: 17px;
+      padding: 14px; border: 0; border-radius: 12px; margin-top: 10px;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
     button:disabled { opacity: 0.4; }
-    #statut { margin-top: 12px; min-height: 1.4em; }
-    #barre-bas { position: fixed; bottom: 0; left: 0; right: 0; background: white;
-                 padding: 8px 16px 16px; border-top: 1px solid #ddd; }
-    #nom-fichier { font-size: 14px; color: #666; margin-top: 8px; }
+
+    /* Perso / Pro : deux boutons bleus qui envoient directement */
+    #choix { display: flex; gap: 10px; }
+    #choix button {
+      margin-top: 0; background: #1f6feb; color: #fff; font-weight: 600;
+    }
+    #choix button:active { background: #1a5bc4; }
+
+    #joindre { background: #2da44e; color: #fff; }
+    #nom-fichier { font-size: 14px; color: #666; margin-top: 8px; text-align: center; }
+    svg { width: 22px; height: 22px; flex: none; }
   </style>
 </head>
 <body>
-  <div style="text-align:right"><a href="admin.html">⚙ Admin</a></div>
+  <div id="haut"><a href="admin.html">⚙ Admin</a></div>
 
-  <select id="destinataire">
-    <option value="">-- Choisir un destinataire --</option>
-  </select>
-
-  <textarea id="texte" placeholder="Votre message..."></textarea>
-  <button id="send" disabled>Send</button>
+  <textarea id="texte" placeholder="Votre message..." autofocus></textarea>
   <div id="statut"></div>
 
   <div id="barre-bas">
+    <div id="choix">
+      <button id="perso" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+        <path d="M3 7l9 6 9-6"></path>
+      </svg>
+      Perso
+      </button>
+      <button id="pro" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+        <path d="M3 7l9 6 9-6"></path>
+      </svg>
+      Pro
+      </button>
+    </div>
+
     <input type="file" id="fichier" hidden>
-    <button id="joindre">📎 Joindre un fichier</button>
+    <button id="joindre" type="button">Joindre un fichier</button>
     <div id="nom-fichier">Aucun fichier</div>
   </div>
 
   <script>
-    const liste = document.getElementById("destinataire");
-    const bouton = document.getElementById("send");
+    const TAILLE_MAX = 7.9 * 1024 * 1024; // un peu sous les 8 Mo du serveur
+
     const zoneTexte = document.getElementById("texte");
     const fichier = document.getElementById("fichier");
     const joindre = document.getElementById("joindre");
     const nomFichier = document.getElementById("nom-fichier");
+    const boutonPerso = document.getElementById("perso");
+    const boutonPro = document.getElementById("pro");
 
-    // Remplir la liste avec les adresses du tiroir
-    ["adresse1", "adresse2"].forEach(function (cle) {
-      const adresse = localStorage.getItem(cle);
-      if (adresse) {
-        const option = document.createElement("option");
-        option.value = adresse;
-        option.textContent = adresse;
-        liste.appendChild(option);
-      }
-    });
-
-    liste.onchange = function () {
-      bouton.disabled = (liste.value === "");
+    // Adresse 1 = Perso, Adresse 2 = Pro (réglées dans ⚙ Admin)
+    const adresses = {
+      perso: localStorage.getItem("adresse1") || "",
+      pro: localStorage.getItem("adresse2") || ""
     };
 
-    joindre.onclick = function () {
-      fichier.click();
-    };
+    // Efface l'ancien message d'erreur dès qu'on retape
+    zoneTexte.oninput = function () { afficher("", false); };
+
+    joindre.onclick = function () { fichier.click(); };
 
     fichier.onchange = function () {
-      if (fichier.files.length > 0) {
-        nomFichier.textContent = fichier.files[0].name;
-      } else {
+      if (fichier.files.length === 0) {
         nomFichier.textContent = "Aucun fichier";
+        return;
       }
+      const f = fichier.files[0];
+      if (f.size > TAILLE_MAX) {
+        const mo = (f.size / 1024 / 1024).toFixed(1);
+        afficher("Fichier trop lourd (" + mo + " Mo). Maximum : 8 Mo.", true);
+        fichier.value = "";
+        nomFichier.textContent = "Aucun fichier";
+        return;
+      }
+      nomFichier.textContent = f.name;
     };
 
-    // NOUVEAU : afficher un message de statut (vert ou rouge)
     function afficher(message, estErreur) {
       const zone = document.getElementById("statut");
       zone.textContent = message;
       zone.style.color = estErreur ? "crimson" : "green";
     }
 
-    // NOUVEAU : le bouton Send envoie vraiment le colis
-    bouton.onclick = async function () {
+    // Un tap sur Perso ou Pro envoie directement
+    async function envoyer(nom) {
       const serveur = localStorage.getItem("serveur") || "";
       const token = localStorage.getItem("token") || "";
 
+      if (!adresses[nom]) {
+        afficher("Adresse « " + nom + " » non renseignée dans ⚙ Admin.", true);
+        return;
+      }
       if (!serveur || !token) {
-        afficher("Renseigne d'abord le serveur et le mot de passe dans ⚙ Admin.", true);
+        afficher("Renseigne d'abord le serveur et la carte dans ⚙ Admin.", true);
+        return;
+      }
+      if (zoneTexte.value.trim() === "") {
+        afficher("Écris d'abord un message.", true);
         return;
       }
 
       const colis = new FormData();
-      colis.append("destinataire", liste.value);
+      colis.append("destinataire", adresses[nom]);
       colis.append("texte", zoneTexte.value);
       if (fichier.files.length > 0) {
         colis.append("fichier", fichier.files[0]);
       }
 
-      bouton.disabled = true;
+      // Les deux boutons sont bloqués pendant l'envoi (pas de double envoi)
+      boutonPerso.disabled = true;
+      boutonPro.disabled = true;
       afficher("Envoi en cours...", false);
 
       try {
@@ -105,22 +163,35 @@
           headers: { "X-Access-Token": token },
           body: colis
         });
-        const resultat = await reponse.json();
+
+        // La réponse n'est pas toujours du JSON (ex. page d'erreur d'un intermédiaire)
+        let resultat = {};
+        try {
+          resultat = JSON.parse(await reponse.text());
+        } catch (e) {
+          resultat = {};
+        }
 
         if (reponse.ok && resultat.ok) {
-          afficher("Message envoyé ✔", false);
+          afficher("Message envoyé à " + nom + " ✔", false);
           zoneTexte.value = "";
           fichier.value = "";
           nomFichier.textContent = "Aucun fichier";
+        } else if (reponse.status === 413) {
+          afficher("Échec : fichier trop volumineux (8 Mo max).", true);
         } else {
-          afficher("Échec : " + (resultat.erreur || "erreur inconnue"), true);
+          afficher("Échec : " + (resultat.erreur || "erreur " + reponse.status), true);
         }
       } catch (e) {
         afficher("Serveur injoignable", true);
       }
 
-      bouton.disabled = (liste.value === "");
-    };
+      boutonPerso.disabled = false;
+      boutonPro.disabled = false;
+    }
+
+    boutonPerso.onclick = function () { envoyer("perso"); };
+    boutonPro.onclick = function () { envoyer("pro"); };
   </script>
 </body>
 </html>

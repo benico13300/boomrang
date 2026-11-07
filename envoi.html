@@ -121,6 +121,40 @@
       nomFichier.textContent = f.name;
     };
 
+    // --- Sons générés par le code (aucun fichier audio) ---
+    let audio = null;
+    function debloquerSon() {
+      // À appeler pendant le tap : iOS n'autorise le son qu'après un geste
+      try {
+        if (!audio) { audio = new (window.AudioContext || window.webkitAudioContext)(); }
+        if (audio.state === "suspended") { audio.resume(); }
+      } catch (e) { audio = null; }
+    }
+    function note(freq, debut, duree, type) {
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      const t0 = audio.currentTime + debut;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duree);
+      osc.connect(gain);
+      gain.connect(audio.destination);
+      osc.start(t0);
+      osc.stop(t0 + duree + 0.05);
+    }
+    function sonSucces() {   // deux notes qui montent : « c'est parti »
+      if (!audio) return;
+      note(784, 0, 0.14, "sine");
+      note(1175, 0.14, 0.22, "sine");
+    }
+    function sonErreur() {   // deux notes graves qui descendent : « raté »
+      if (!audio) return;
+      note(330, 0, 0.18, "square");
+      note(220, 0.18, 0.3, "square");
+    }
+
     function afficher(message, estErreur) {
       const zone = document.getElementById("statut");
       zone.textContent = message;
@@ -129,19 +163,23 @@
 
     // Un tap sur Perso ou Pro envoie directement
     async function envoyer(nom) {
+      debloquerSon();
       const serveur = localStorage.getItem("serveur") || "";
       const token = localStorage.getItem("token") || "";
 
       if (!adresses[nom]) {
         afficher("Adresse « " + nom + " » non renseignée dans ⚙ Admin.", true);
+        sonErreur();
         return;
       }
       if (!serveur || !token) {
         afficher("Renseigne d'abord le serveur et la carte dans ⚙ Admin.", true);
+        sonErreur();
         return;
       }
       if (zoneTexte.value.trim() === "") {
         afficher("Écris d'abord un message.", true);
+        sonErreur();
         return;
       }
 
@@ -174,16 +212,20 @@
 
         if (reponse.ok && resultat.ok) {
           afficher("Message envoyé à " + nom + " ✔", false);
+          sonSucces();
           zoneTexte.value = "";
           fichier.value = "";
           nomFichier.textContent = "Aucun fichier";
         } else if (reponse.status === 413) {
           afficher("Échec : fichier trop volumineux (8 Mo max).", true);
+          sonErreur();
         } else {
           afficher("Échec : " + (resultat.erreur || "erreur " + reponse.status), true);
+          sonErreur();
         }
       } catch (e) {
         afficher("Serveur injoignable", true);
+        sonErreur();
       }
 
       boutonPerso.disabled = false;

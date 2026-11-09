@@ -82,17 +82,72 @@
     #nom-fichier { font-size: 13px; color: #666; text-align: center; padding-top: 4px; overflow-wrap: anywhere; }
     #nom-fichier:empty { display: none; }
     svg { width: 20px; height: 20px; flex: none; }
+
+    /* --- Sélection d'une tâche + barre d'actions --- */
+    .tache { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .tache.choisie { background: #e3efff; }
+    #ajout { font-size: 28px; font-weight: 300; }
+    #actions { display: flex; gap: 8px; margin-top: 6px; }
+    #actions[hidden] { display: none; }
+    #actions button {
+      flex: 1; height: 44px; margin: 0; padding: 0;
+      border: 0; border-radius: 12px; background: #f0f0f0;
+      font-size: 20px; color: #222;
+    }
+    #actions button:active { background: #dcdcdc; }
+    #actions button:disabled { opacity: 0.35; }
+
+    /* --- Formulaire « Nouvelle tâche » (posé en haut : le clavier ne le cache pas) --- */
+    #voile {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10;
+      background: rgba(0, 0, 0, 0.35); overflow-y: auto;
+      display: flex; align-items: flex-start; justify-content: center;
+      padding: calc(env(safe-area-inset-top) + 12px) 12px 12px;
+    }
+    #voile[hidden] { display: none; }
+    #formulaire { width: 100%; max-width: 456px; background: #fff; border-radius: 16px; padding: 16px; }
+    #formulaire h2 { margin: 0 0 4px; font-size: 18px; }
+    #formulaire label { display: block; margin-top: 10px; font-size: 13px; color: #666; }
+    #formulaire input[type=text], #formulaire input[type=date] {
+      display: block; width: 100%; height: 44px; margin-top: 4px; padding: 0 12px;
+      font-family: inherit; font-size: 16px; background: #fff;
+      border: 1px solid #ddd; border-radius: 10px;
+    }
+    #f-statuts { display: flex; gap: 8px; margin-top: 12px; }
+    #f-statuts button {
+      flex: 1; height: 44px; border: 2px solid transparent; border-radius: 10px;
+      background: #f0f0f0; font-family: inherit; font-size: 15px; color: #222;
+    }
+    #f-statuts button.sel { border-color: #1f6feb; background: #e8f0fe; }
+    #f-erreur { min-height: 1.2em; margin-top: 8px; font-size: 14px; color: crimson; }
+    #f-boutons { display: flex; gap: 8px; margin-top: 8px; }
+    #f-boutons button {
+      flex: 1; height: 48px; border: 0; border-radius: 12px;
+      font-family: inherit; font-size: 16px; font-weight: 600;
+      background: #f0f0f0; color: #222;
+    }
+    #f-boutons #f-valider { background: #1f6feb; color: #fff; }
+    #f-boutons button:disabled { opacity: 0.4; }
   </style>
 </head>
 <body>
   <div id="entete">
     <h1>Tâches</h1>
     <span id="maj"></span>
+    <button id="ajout" class="icone" type="button" aria-label="Ajouter une tâche">+</button>
     <button id="refresh" class="icone" type="button" aria-label="Rafraîchir">🔄</button>
     <a class="icone" href="admin.html" aria-label="Réglages">⚙</a>
   </div>
   <div id="etat" hidden></div>
   <div id="liste"></div>
+
+  <!-- Barre d'actions : visible seulement quand une tâche est touchée -->
+  <div id="actions" hidden>
+    <button id="act-statut" type="button" aria-label="Changer la couleur">🔴</button>
+    <button id="act-haut" type="button" aria-label="Monter">▲</button>
+    <button id="act-bas" type="button" aria-label="Descendre">▼</button>
+    <button id="act-suppr" type="button" aria-label="Supprimer">🗑</button>
+  </div>
 
   <div id="envoi">
     <textarea id="texte" placeholder="Note rapide..."></textarea>
@@ -119,6 +174,29 @@
       <button id="joindre" type="button" aria-label="Joindre un fichier">📎</button>
     </div>
     <div id="nom-fichier"></div>
+  </div>
+
+  <!-- Formulaire « Nouvelle tâche » -->
+  <div id="voile" hidden>
+    <form id="formulaire" autocomplete="off">
+      <h2>Nouvelle tâche</h2>
+      <label for="f-client">Client</label>
+      <input id="f-client" type="text" maxlength="100" autocapitalize="words">
+      <label for="f-tache">Tâche</label>
+      <input id="f-tache" type="text" maxlength="500" autocapitalize="sentences">
+      <label for="f-date">Date de création</label>
+      <input id="f-date" type="date">
+      <div id="f-statuts">
+        <button type="button" data-statut="normal" class="sel">Normal</button>
+        <button type="button" data-statut="urgent">🔴 Urgent</button>
+        <button type="button" data-statut="perso">🔵 Perso</button>
+      </div>
+      <div id="f-erreur"></div>
+      <div id="f-boutons">
+        <button type="button" id="f-annuler">Annuler</button>
+        <button type="submit" id="f-valider">Ajouter</button>
+      </div>
+    </form>
   </div>
 
   <script>
@@ -276,11 +354,17 @@
     boutonPro.onclick = function () { envoyer("pro"); };
 
     // ====================================================================
-    //  PARTIE 2 : LISTE DES TÂCHES (lecture seule pour l'instant)
+    //  PARTIE 2 : TÂCHES (lecture, ajout, couleur, ordre, suppression)
     // ====================================================================
-    const INTERVALLE_MS = 15 * 60 * 1000;   // actualisation automatique : 15 minutes
+    const INTERVALLE_MS = 15 * 60 * 1000;          // actualisation automatique : 15 minutes
+    const CYCLE = ["normal", "urgent", "perso"];   // clic après clic : normal -> rouge -> bleu -> normal
+    const SUIVANT = { normal: "🔴", urgent: "🔵", perso: "⚪" };   // ce que le bouton annonce
 
-    let taches = [];   // la liste affichée à l'écran
+    let taches = [];        // la liste affichée à l'écran
+    let selection = null;   // identifiant de la tâche touchée
+    let enLigne = false;    // vrai dès que le serveur a répondu : sinon, lecture seule
+    let seq = 0;            // numéro de la dernière demande envoyée
+    let seqAppliquee = 0;   // numéro de la dernière réponse prise en compte
 
     // Copie de secours dans le téléphone : affichée tout de suite, et hors connexion
     function lireCache() {
@@ -303,19 +387,33 @@
       bandeau.hidden = (message === "");
     }
 
-    function dessiner() {
+    // Affiche ou cache la barre d'actions, et règle ses boutons
+    function majActions() {
+      const barre = document.getElementById("actions");
+      const i = taches.findIndex(function (t) { return t.id === selection; });
+      barre.hidden = (i === -1);
+      if (i === -1) return;
+      document.getElementById("act-statut").textContent = SUIVANT[taches[i].statut] || "🔴";
+      document.getElementById("act-haut").disabled = (i === 0);
+      document.getElementById("act-bas").disabled = (i === taches.length - 1);
+    }
+
+    function dessiner(voir) {
       const zone = document.getElementById("liste");
+      const defilement = zone.scrollTop;   // on retient la position pour ne pas remonter en haut
       zone.textContent = "";
+      if (selection !== null && !taches.some(function (t) { return t.id === selection; })) {
+        selection = null;                  // la tâche touchée n'existe plus
+      }
       if (taches.length === 0) {
         const vide = document.createElement("div");
         vide.className = "vide";
         vide.textContent = "Aucune tâche";
         zone.appendChild(vide);
-        return;
       }
       taches.forEach(function (t) {
         const carte = document.createElement("div");
-        carte.className = "tache " + t.statut;   // "normal", "urgent" ou "perso"
+        carte.className = "tache " + t.statut + (t.id === selection ? " choisie" : "");
         carte.dataset.id = t.id;
 
         // textContent (et non innerHTML) : un texte de tâche n'est jamais interprété comme du code
@@ -332,48 +430,206 @@
         carte.append(client, texte, date);
         zone.appendChild(carte);
       });
+      zone.scrollTop = defilement;
+      majActions();
+      if (voir) {                          // garde la tâche touchée visible
+        const choisie = zone.querySelector(".choisie");
+        if (choisie) { choisie.scrollIntoView({ block: "nearest" }); }
+      }
     }
 
-    async function actualiser() {
+    // --- Conversation avec le serveur ---
+    async function requete(methode, chemin, corps) {
       const serveur = localStorage.getItem("serveur") || "";
       const token = localStorage.getItem("token") || "";
-      if (!serveur || !token) {
-        etat("⚠ Renseigne le serveur et la carte dans ⚙ Admin");
-        return;
+      const options = { method: methode, headers: { "X-Access-Token": token } };
+      if (corps !== undefined) {
+        options.headers["Content-Type"] = "application/json";
+        options.body = JSON.stringify(corps);
       }
+      const reponse = await fetch(serveur + "/taches" + chemin, options);
 
-      const bouton = document.getElementById("refresh");
-      bouton.disabled = true;
+      let resultat = {};
       try {
-        const reponse = await fetch(serveur + "/taches", {
-          headers: { "X-Access-Token": token }
-        });
+        resultat = await reponse.json();
+      } catch (e) {
+        resultat = {};
+      }
+      if (reponse.status === 401) { throw new Error("acces"); }
+      if (reponse.status === 404) { throw new Error("introuvable"); }
+      if (!reponse.ok || !resultat.ok) {
+        const probleme = new Error("serveur");
+        probleme.detail = resultat.erreur || "";
+        throw probleme;
+      }
+      return resultat.taches;   // le serveur renvoie toujours la liste à jour
+    }
 
-        let resultat = {};
-        try {
-          resultat = await reponse.json();
-        } catch (e) {
-          resultat = {};
-        }
-
-        if (reponse.status === 401) {
-          etat("⚠ Accès refusé : vérifie la carte dans ⚙ Admin");
-        } else if (!reponse.ok || !resultat.ok) {
-          etat("⚠ Erreur du serveur");
-        } else {
-          taches = resultat.taches;
+    // Envoie une demande. Renvoie null si tout va bien, sinon un court message d'erreur.
+    async function executer(methode, chemin, corps) {
+      if (!localStorage.getItem("serveur") || !localStorage.getItem("token")) {
+        etat("⚠ Renseigne le serveur et la carte dans ⚙ Admin");
+        return "Serveur ou carte non renseignés (⚙ Admin)";
+      }
+      const mon = ++seq;
+      const bouton = document.getElementById("refresh");
+      if (methode === "GET") { bouton.disabled = true; }
+      try {
+        const liste = await requete(methode, chemin, corps);
+        if (mon > seqAppliquee) {          // une réponse plus ancienne que l'affichage est ignorée
+          seqAppliquee = mon;
+          taches = liste;
           ecrireCache();
-          dessiner();
+          enLigne = true;
           etat("");
+          dessiner();
           document.getElementById("maj").textContent =
             new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
         }
+        return null;
       } catch (e) {
-        etat("⚠ Hors connexion (dernière liste affichée)");
+        if (e.message === "introuvable") {   // supprimée depuis l'autre appareil : on se resynchronise
+          actualiser();
+          return "Cette tâche n'existe plus : liste actualisée.";
+        }
+        let banniere;
+        if (e.message === "acces") {
+          enLigne = false;
+          banniere = "⚠ Accès refusé : vérifie la carte dans ⚙ Admin";
+        } else if (e.message === "serveur") {
+          banniere = "⚠ " + (e.detail || "Erreur du serveur");
+        } else {
+          enLigne = false;
+          banniere = "⚠ Hors connexion (dernière liste affichée)";
+        }
+        if (mon >= seqAppliquee) {           // retour à la dernière liste connue du serveur
+          taches = lireCache();
+          dessiner();
+          etat(banniere);
+        }
+        return banniere.replace("⚠ ", "");
       } finally {
-        bouton.disabled = false;
+        if (methode === "GET") { bouton.disabled = false; }
       }
     }
+
+    function actualiser() { return executer("GET", ""); }
+
+    // Hors connexion, la liste est en lecture seule
+    function modifsPossibles() {
+      if (enLigne) { return true; }
+      etat("⚠ Lecture seule : pas de connexion au serveur. Touche 🔄 pour réessayer.");
+      return false;
+    }
+
+    // --- Toucher une tâche = la sélectionner (retoucher = désélectionner) ---
+    document.getElementById("liste").onclick = function (e) {
+      const carte = e.target.closest(".tache");
+      if (!carte) { return; }
+      const id = Number(carte.dataset.id);
+      selection = (selection === id) ? null : id;
+      dessiner(true);
+    };
+
+    // --- Barre d'actions ---
+    document.getElementById("act-statut").onclick = function () {
+      if (!modifsPossibles()) { return; }
+      const t = taches.find(function (x) { return x.id === selection; });
+      if (!t) { return; }
+      const suivant = CYCLE[(CYCLE.indexOf(t.statut) + 1) % CYCLE.length];
+      executer("PUT", "/" + t.id, { statut: suivant });
+    };
+
+    function deplacer(sens) {
+      if (!modifsPossibles()) { return; }
+      const i = taches.findIndex(function (t) { return t.id === selection; });
+      const j = i + sens;
+      if (i === -1 || j < 0 || j >= taches.length) { return; }
+      const tache = taches.splice(i, 1)[0];   // on la sort de la liste...
+      taches.splice(j, 0, tache);             // ...et on la remet à sa nouvelle place
+      dessiner(true);                         // affichage immédiat, sans attendre le serveur
+      executer("PUT", "/ordre", { ordre: taches.map(function (t) { return t.id; }) });
+    }
+    document.getElementById("act-haut").onclick = function () { deplacer(-1); };
+    document.getElementById("act-bas").onclick = function () { deplacer(+1); };
+
+    document.getElementById("act-suppr").onclick = function () {
+      if (!modifsPossibles()) { return; }
+      const id = selection;
+      if (id === null) { return; }
+      if (!confirm("Supprimer cette tâche ?\n(pas d'archivage)")) { return; }
+      selection = null;
+      dessiner();
+      executer("DELETE", "/" + id);
+    };
+
+    // --- Formulaire « Nouvelle tâche » ---
+    let statutChoisi = "normal";
+
+    function choisirStatut(valeur) {
+      statutChoisi = valeur;
+      document.querySelectorAll("#f-statuts button").forEach(function (b) {
+        b.classList.toggle("sel", b.dataset.statut === valeur);
+      });
+    }
+    document.querySelectorAll("#f-statuts button").forEach(function (b) {
+      b.onclick = function () { choisirStatut(b.dataset.statut); };
+    });
+
+    // Date du jour au format du champ date (aaaa-mm-jj)
+    function dateDuJourISO() {
+      const d = new Date();
+      const deux = function (n) { return String(n).padStart(2, "0"); };
+      return d.getFullYear() + "-" + deux(d.getMonth() + 1) + "-" + deux(d.getDate());
+    }
+
+    function ouvrirFormulaire() {
+      if (!modifsPossibles()) { return; }
+      document.getElementById("f-client").value = "";
+      document.getElementById("f-tache").value = "";
+      document.getElementById("f-date").value = dateDuJourISO();
+      document.getElementById("f-erreur").textContent = "";
+      choisirStatut("normal");
+      document.getElementById("voile").hidden = false;
+      document.getElementById("f-client").focus();
+    }
+    function fermerFormulaire() {
+      document.getElementById("voile").hidden = true;
+    }
+
+    document.getElementById("ajout").onclick = ouvrirFormulaire;
+    document.getElementById("f-annuler").onclick = fermerFormulaire;
+    document.getElementById("voile").onclick = function (e) {
+      if (e.target === this) { fermerFormulaire(); }   // toucher en dehors du formulaire = annuler
+    };
+
+    document.getElementById("formulaire").onsubmit = async function (e) {
+      e.preventDefault();
+      const client = document.getElementById("f-client").value.trim();
+      const tache = document.getElementById("f-tache").value.trim();
+      const iso = document.getElementById("f-date").value;
+      const erreur = document.getElementById("f-erreur");
+      if (!client || !tache) {
+        erreur.textContent = "Client et tâche sont obligatoires.";
+        return;
+      }
+      const bouton = document.getElementById("f-valider");
+      bouton.disabled = true;
+      erreur.textContent = "";
+
+      const corps = { client: client, tache: tache, statut: statutChoisi };
+      if (iso) { corps.date = iso.split("-").reverse().join("/"); }   // aaaa-mm-jj -> jj/mm/aaaa
+
+      const probleme = await executer("POST", "", corps);
+      bouton.disabled = false;
+      if (probleme) {
+        erreur.textContent = probleme;
+      } else {
+        fermerFormulaire();
+        const zone = document.getElementById("liste");
+        zone.scrollTop = zone.scrollHeight;   // la nouvelle tâche est en bas de liste
+      }
+    };
 
     // --- Démarrage ---
     document.getElementById("refresh").onclick = actualiser;

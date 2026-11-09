@@ -59,7 +59,7 @@
     /* --- Envoi d'email, compacté --- */
     #envoi { padding: 8px 0; }
     #texte {
-      display: block; width: 100%; height: 68px;
+      display: block; width: 100%; height: 110px;   /* 4 lignes visibles */
       font-family: inherit; font-size: 16px; line-height: 1.3;   /* 16 px : évite le zoom automatique d'iOS */
       border: 1px solid #ddd; border-radius: 12px;
       padding: 10px 12px; resize: none; outline: none;
@@ -76,7 +76,9 @@
     }
     #choix button:active { background: #1a5bc4; }
     #choix button:disabled { opacity: 0.4; }
-    #choix #joindre { flex: 0 0 56px; background: #2da44e; font-size: 20px; }
+    /* Pièce jointe : plus large, fond gris clair. Perso et Pro se partagent la place restante. */
+    #choix #joindre { flex: 0 0 88px; background: #e8e8e8; font-size: 22px; }
+    #choix #joindre:active { background: #d4d4d4; }
     #nom-fichier { font-size: 13px; color: #666; text-align: center; padding-top: 4px; overflow-wrap: anywhere; }
     #nom-fichier:empty { display: none; }
     svg { width: 20px; height: 20px; flex: none; }

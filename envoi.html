@@ -17,74 +17,112 @@
       background: #fff; color: #222;
       display: flex; flex-direction: column;
       max-width: 480px; margin: 0 auto;
-      padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+      padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
     }
-    #haut { text-align: right; padding: 8px 0 4px; font-size: 14px; }
-    #haut a { color: #888; text-decoration: none; }
 
-    /* La zone de texte prend toute la place disponible */
+    /* --- Barre du haut --- */
+    #entete { display: flex; align-items: center; gap: 4px; padding: 6px 0; }
+    #entete h1 { flex: 1; margin: 0; font-size: 20px; }
+    #maj { font-size: 12px; color: #888; margin-right: 4px; }
+    .icone {
+      width: 44px; height: 44px; margin: 0; padding: 0;
+      border: 0; border-radius: 12px; background: #f0f0f0;
+      font-size: 20px; color: inherit; text-decoration: none;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .icone:disabled { opacity: 0.4; }
+
+    /* --- Bandeau d'état (hors connexion, erreurs) --- */
+    #etat {
+      background: #fff3cd; color: #8a6d3b; font-size: 13px;
+      padding: 6px 10px; border-radius: 8px; margin-bottom: 6px;
+    }
+    #etat[hidden] { display: none; }
+
+    /* --- Liste : elle prend toute la place libre et défile toute seule --- */
+    #liste {
+      flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+      border: 1px solid #eee; border-radius: 12px;
+    }
+    .tache {
+      padding: 10px 12px; border-bottom: 1px solid #eee;
+      border-left: 5px solid transparent;
+    }
+    .tache:last-child { border-bottom: 0; }
+    .tache .client { font-weight: 600; }
+    .tache .texte-tache { margin-top: 2px; overflow-wrap: anywhere; }
+    .tache .date { margin-top: 2px; font-size: 12px; color: #888; }
+    .tache.urgent { border-left-color: #d1242f; color: #d1242f; }
+    .tache.perso { border-left-color: #1f6feb; color: #1f6feb; }
+    .vide { padding: 24px; text-align: center; color: #888; }
+
+    /* --- Envoi d'email, compacté --- */
+    #envoi { padding: 8px 0; }
     #texte {
-      flex: 1; width: 100%; min-height: 0;
-      font-family: inherit; font-size: 17px; line-height: 1.4;
+      display: block; width: 100%; height: 68px;
+      font-family: inherit; font-size: 16px; line-height: 1.3;   /* 16 px : évite le zoom automatique d'iOS */
       border: 1px solid #ddd; border-radius: 12px;
-      padding: 14px; resize: none; outline: none;
+      padding: 10px 12px; resize: none; outline: none;
     }
     #texte:focus { border-color: #1f6feb; }
+    #statut { min-height: 1.2em; padding: 4px 2px 0; font-size: 14px; }
 
-    #statut { min-height: 1.4em; padding: 8px 2px 0; font-size: 15px; }
-
-    #barre-bas { padding: 8px 0 16px; }
-    button {
-      width: 100%; font-family: inherit; font-size: 17px;
-      padding: 14px; border: 0; border-radius: 12px; margin-top: 10px;
-      display: flex; align-items: center; justify-content: center; gap: 10px;
-    }
-    button:disabled { opacity: 0.4; }
-
-    /* Perso / Pro : deux boutons bleus qui envoient directement */
-    #choix { display: flex; gap: 10px; }
+    #choix { display: flex; gap: 8px; margin-top: 4px; }
     #choix button {
-      margin-top: 0; background: #1f6feb; color: #fff; font-weight: 600;
+      flex: 1; height: 48px; margin: 0; border: 0; border-radius: 12px;
+      font-family: inherit; font-size: 16px; font-weight: 600;
+      background: #1f6feb; color: #fff;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
     }
     #choix button:active { background: #1a5bc4; }
-
-    #joindre { background: #2da44e; color: #fff; }
-    #nom-fichier { font-size: 14px; color: #666; margin-top: 8px; text-align: center; }
-    svg { width: 22px; height: 22px; flex: none; }
+    #choix button:disabled { opacity: 0.4; }
+    #choix #joindre { flex: 0 0 56px; background: #2da44e; font-size: 20px; }
+    #nom-fichier { font-size: 13px; color: #666; text-align: center; padding-top: 4px; overflow-wrap: anywhere; }
+    #nom-fichier:empty { display: none; }
+    svg { width: 20px; height: 20px; flex: none; }
   </style>
 </head>
 <body>
-  <div id="haut"><a href="admin.html">⚙ Admin</a></div>
+  <div id="entete">
+    <h1>Tâches</h1>
+    <span id="maj"></span>
+    <button id="refresh" class="icone" type="button" aria-label="Rafraîchir">🔄</button>
+    <a class="icone" href="admin.html" aria-label="Réglages">⚙</a>
+  </div>
+  <div id="etat" hidden></div>
+  <div id="liste"></div>
 
-  <textarea id="texte" placeholder="Votre message..." autofocus></textarea>
-  <div id="statut"></div>
-
-  <div id="barre-bas">
-    <div id="choix">
-      <button id="perso" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="5" width="18" height="14" rx="2"></rect>
-        <path d="M3 7l9 6 9-6"></path>
-      </svg>
-      Perso
-      </button>
-      <button id="pro" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="5" width="18" height="14" rx="2"></rect>
-        <path d="M3 7l9 6 9-6"></path>
-      </svg>
-      Pro
-      </button>
-    </div>
+  <div id="envoi">
+    <textarea id="texte" placeholder="Note rapide..."></textarea>
+    <div id="statut"></div>
 
     <input type="file" id="fichier" hidden>
-    <button id="joindre" type="button">Joindre un fichier</button>
-    <div id="nom-fichier">Aucun fichier</div>
+    <div id="choix">
+      <button id="perso" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+          <path d="M3 7l9 6 9-6"></path>
+        </svg>
+        Perso
+      </button>
+      <button id="pro" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+          <path d="M3 7l9 6 9-6"></path>
+        </svg>
+        Pro
+      </button>
+      <button id="joindre" type="button" aria-label="Joindre un fichier">📎</button>
+    </div>
+    <div id="nom-fichier"></div>
   </div>
 
   <script>
+    // ====================================================================
+    //  PARTIE 1 : ENVOI D'EMAIL (comportement inchangé)
+    // ====================================================================
     const TAILLE_MAX = 7.9 * 1024 * 1024; // un peu sous les 8 Mo du serveur
 
     const zoneTexte = document.getElementById("texte");
@@ -107,7 +145,7 @@
 
     fichier.onchange = function () {
       if (fichier.files.length === 0) {
-        nomFichier.textContent = "Aucun fichier";
+        nomFichier.textContent = "";
         return;
       }
       const f = fichier.files[0];
@@ -115,10 +153,10 @@
         const mo = (f.size / 1024 / 1024).toFixed(1);
         afficher("Fichier trop lourd (" + mo + " Mo). Maximum : 8 Mo.", true);
         fichier.value = "";
-        nomFichier.textContent = "Aucun fichier";
+        nomFichier.textContent = "";
         return;
       }
-      nomFichier.textContent = f.name;
+      nomFichier.textContent = "📎 " + f.name;
     };
 
     // --- Sons générés par le code (aucun fichier audio) ---
@@ -215,7 +253,7 @@
           sonSucces();
           zoneTexte.value = "";
           fichier.value = "";
-          nomFichier.textContent = "Aucun fichier";
+          nomFichier.textContent = "";
         } else if (reponse.status === 413) {
           afficher("Échec : fichier trop volumineux (8 Mo max).", true);
           sonErreur();
@@ -234,6 +272,119 @@
 
     boutonPerso.onclick = function () { envoyer("perso"); };
     boutonPro.onclick = function () { envoyer("pro"); };
+
+    // ====================================================================
+    //  PARTIE 2 : LISTE DES TÂCHES (lecture seule pour l'instant)
+    // ====================================================================
+    const INTERVALLE_MS = 15 * 60 * 1000;   // actualisation automatique : 15 minutes
+
+    let taches = [];   // la liste affichée à l'écran
+
+    // Copie de secours dans le téléphone : affichée tout de suite, et hors connexion
+    function lireCache() {
+      try {
+        const liste = JSON.parse(localStorage.getItem("taches_cache") || "[]");
+        return Array.isArray(liste) ? liste : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    function ecrireCache() {
+      try {
+        localStorage.setItem("taches_cache", JSON.stringify(taches));
+      } catch (e) { /* la copie est un plus : son échec ne bloque rien */ }
+    }
+
+    function etat(message) {
+      const bandeau = document.getElementById("etat");
+      bandeau.textContent = message;
+      bandeau.hidden = (message === "");
+    }
+
+    function dessiner() {
+      const zone = document.getElementById("liste");
+      zone.textContent = "";
+      if (taches.length === 0) {
+        const vide = document.createElement("div");
+        vide.className = "vide";
+        vide.textContent = "Aucune tâche";
+        zone.appendChild(vide);
+        return;
+      }
+      taches.forEach(function (t) {
+        const carte = document.createElement("div");
+        carte.className = "tache " + t.statut;   // "normal", "urgent" ou "perso"
+        carte.dataset.id = t.id;
+
+        // textContent (et non innerHTML) : un texte de tâche n'est jamais interprété comme du code
+        const client = document.createElement("div");
+        client.className = "client";
+        client.textContent = t.client;
+        const texte = document.createElement("div");
+        texte.className = "texte-tache";
+        texte.textContent = t.tache;
+        const date = document.createElement("div");
+        date.className = "date";
+        date.textContent = t.date;
+
+        carte.append(client, texte, date);
+        zone.appendChild(carte);
+      });
+    }
+
+    async function actualiser() {
+      const serveur = localStorage.getItem("serveur") || "";
+      const token = localStorage.getItem("token") || "";
+      if (!serveur || !token) {
+        etat("⚠ Renseigne le serveur et la carte dans ⚙ Admin");
+        return;
+      }
+
+      const bouton = document.getElementById("refresh");
+      bouton.disabled = true;
+      try {
+        const reponse = await fetch(serveur + "/taches", {
+          headers: { "X-Access-Token": token }
+        });
+
+        let resultat = {};
+        try {
+          resultat = await reponse.json();
+        } catch (e) {
+          resultat = {};
+        }
+
+        if (reponse.status === 401) {
+          etat("⚠ Accès refusé : vérifie la carte dans ⚙ Admin");
+        } else if (!reponse.ok || !resultat.ok) {
+          etat("⚠ Erreur du serveur");
+        } else {
+          taches = resultat.taches;
+          ecrireCache();
+          dessiner();
+          etat("");
+          document.getElementById("maj").textContent =
+            new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+        }
+      } catch (e) {
+        etat("⚠ Hors connexion (dernière liste affichée)");
+      } finally {
+        bouton.disabled = false;
+      }
+    }
+
+    // --- Démarrage ---
+    document.getElementById("refresh").onclick = actualiser;
+
+    taches = lireCache();   // d'abord la dernière liste connue...
+    dessiner();
+    actualiser();           // ...puis la liste à jour du serveur
+    setInterval(actualiser, INTERVALLE_MS);
+
+    // Sur iPhone, une app en arrière-plan est mise en pause : on actualise au retour dedans
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") { actualiser(); }
+    });
   </script>
 </body>
 </html>

@@ -72,7 +72,7 @@
       background: #1f6feb; color: #fff; font-size: 16px;
     }
     #panneau-compte button[hidden] { display: none; }
-    #c-import, #c-deconnexion { background: #555 !important; }
+    #c-deconnexion { background: #555 !important; }
     #panneau-jeton { padding: 0 0 8px; }
     #panneau-jeton[hidden] { display: none; }
     #panneau-jeton input {
@@ -161,7 +161,6 @@
   <div id="panneau-compte" hidden>
     <div id="c-info">Non connecté</div>
     <button type="button" id="c-connexion">Se connecter avec Google</button>
-    <button type="button" id="c-import" hidden>Importer les tâches de l'ancien serveur</button>
     <button type="button" id="c-deconnexion" hidden>Se déconnecter</button>
   </div>
   <div id="liste"></div>
@@ -573,40 +572,10 @@
       utilisateur = u;
       $("c-connexion").hidden = !!u;
       $("c-deconnexion").hidden = !u;
-      $("c-import").hidden = !u;
       $("c-info").textContent = u ? ("Connecté : " + (u.email || "") + "\nUID : " + u.uid) : "Non connecté";
       if (u) { $("panneau-compte").hidden = true; } else { $("panneau-compte").hidden = false; }
       ecouter();
     });
-
-    // --- Import unique depuis l'ancien serveur PythonAnywhere ---
-    $("c-import").onclick = async function () {
-      const serveur = (localStorage.getItem("serveur") || "").replace(/\/+$/, "");
-      const token = localStorage.getItem("token") || "";
-      if (!serveur || !token) {
-        $("c-info").textContent = "Renseigne d'abord le serveur et le mot de passe dans ⚙ Admin.";
-        return;
-      }
-      try {
-        const rep = await fetch(serveur + "/taches", { headers: { "X-Access-Token": token } });
-        const data = await rep.json();
-        if (!rep.ok || !data.ok || !Array.isArray(data.taches)) { throw new Error("réponse inattendue"); }
-        const liste = data.taches;
-        if (!confirm("Importer " + liste.length + " tâche(s) dans Firebase ?\n(écrase les tâches de même numéro)")) { return; }
-        const lot = writeBatch(db);
-        liste.forEach(function (t, k) {
-          lot.set(refTache(t.id), {
-            id: Number(t.id), client: t.client, tache: t.tache,
-            date: t.date, statut: t.statut, ordre: k
-          });
-        });
-        signaler(lot);
-        await lot.commit();
-        $("c-info").textContent = liste.length + " tâche(s) importée(s) ✔";
-      } catch (e) {
-        $("c-info").textContent = "Import impossible : " + (e.code || e.message || e);
-      }
-    };
 
     // --- Toucher une tâche = la sélectionner (retoucher = désélectionner) ---
     $("liste").onclick = function (e) {

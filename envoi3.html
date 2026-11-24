@@ -419,7 +419,7 @@
     import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut }
       from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
     import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager,
-             memoryLocalCache, collection, doc, onSnapshot, writeBatch, setDoc, updateDoc, deleteDoc }
+             memoryLocalCache, collection, doc, onSnapshot, writeBatch }
       from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
     // Configuration publique du projet (ce n'est pas un secret : la sécurité vient des règles Firestore)
@@ -448,6 +448,9 @@
     const CYCLE = ["normal", "urgent", "perso"];   // clic après clic : normal -> rouge -> bleu -> normal
     const SUIVANT = { normal: "🔴", urgent: "🔵", perso: "⚪" };   // ce que le bouton annonce
     const refTache = function (id) { return doc(db, COL, String(id)); };
+    // « Tableau de service » : un numéro changé à chaque modification, pour que le PC sache quand relire la liste
+    const refVersion = doc(db, "meta", "version");
+    function signaler(lot) { lot.set(refVersion, { n: Date.now() }); }
 
     let taches = [];          // la liste affichée à l'écran
     let selection = null;     // identifiant de la tâche touchée
@@ -597,6 +600,7 @@
             date: t.date, statut: t.statut, ordre: k
           });
         });
+        signaler(lot);
         await lot.commit();
         $("c-info").textContent = liste.length + " tâche(s) importée(s) ✔";
       } catch (e) {
@@ -619,7 +623,10 @@
       const t = taches.find(function (x) { return x.id === selection; });
       if (!t) { return; }
       const suivant = CYCLE[(CYCLE.indexOf(t.statut) + 1) % CYCLE.length];
-      updateDoc(refTache(t.id), { statut: suivant }).catch(erreurFirestore);
+      const lot = writeBatch(db);
+      lot.update(refTache(t.id), { statut: suivant });
+      signaler(lot);
+      lot.commit().catch(erreurFirestore);
     };
 
     function deplacer(sens) {
@@ -634,6 +641,7 @@
       copie.forEach(function (x, k) {
         if (x.ordre !== k) { lot.update(refTache(x.id), { ordre: k }); }
       });
+      signaler(lot);
       garderVisible = true;
       lot.commit().catch(erreurFirestore);
     }
@@ -646,7 +654,10 @@
       if (id === null) { return; }
       if (!confirm("Supprimer cette tâche ?\n(pas d'archivage)")) { return; }
       selection = null;
-      deleteDoc(refTache(id)).catch(erreurFirestore);
+      const lot = writeBatch(db);
+      lot.delete(refTache(id));
+      signaler(lot);
+      lot.commit().catch(erreurFirestore);
     };
 
     // --- Formulaire « Nouvelle tâche » ---
@@ -697,11 +708,14 @@
       }
       const id = Date.now();   // numéro basé sur l'heure : iPhone et PC ne créent jamais le même
       const ordre = taches.length ? Math.max.apply(null, taches.map(function (t) { return t.ordre === 1e9 ? taches.length : t.ordre; })) + 1 : 0;
-      setDoc(refTache(id), {
+      const lot = writeBatch(db);
+      lot.set(refTache(id), {
         id: id, client: client, tache: tache,
         date: iso.split("-").reverse().join("/"),   // aaaa-mm-jj -> jj/mm/aaaa
         statut: statutChoisi, ordre: ordre
-      }).catch(erreurFirestore);
+      });
+      signaler(lot);
+      lot.commit().catch(erreurFirestore);
       fermerFormulaire();
       garderVisible = false;
       const zone = $("liste");

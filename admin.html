@@ -34,9 +34,18 @@
 
   <button id="enregistrer">Enregistrer</button>
   <div id="message"></div>
-  <p><a href="envoi.html">← Retour</a></p>
+  <p><a href="envoi.html" id="retour">← Retour</a></p>
 
   <script>
+    // « Retour » revient à la page d'où l'on vient (envoi.html, envoi2.html ou envoi3.html),
+    // et non plus toujours à envoi.html
+    document.getElementById("retour").onclick = function (e) {
+      if (history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    };
+
     const cles = ["adresse1", "adresse2", "serveur", "token"];
 
     // Au chargement : on relit le tiroir

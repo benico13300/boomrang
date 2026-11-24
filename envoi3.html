@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Envoi rapide</title>
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Envoi 3">
+  <meta name="theme-color" content="#ffffff">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, system-ui, sans-serif;
+      background: #fff; color: #222;
+      display: flex; flex-direction: column;
+      max-width: 480px; margin: 0 auto;
+      padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
+    }
+
+    /* --- Barre du haut --- */
+    #entete { display: flex; align-items: center; gap: 4px; padding: 6px 0; }
+    #entete h1 { flex: 1; margin: 0; font-size: 20px; }
+    #maj { font-size: 12px; color: #888; margin-right: 4px; }
+    .icone {
+      width: 44px; height: 44px; margin: 0; padding: 0;
+      border: 0; border-radius: 12px; background: #f0f0f0;
+      font-size: 20px; color: inherit; text-decoration: none;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .icone:disabled { opacity: 0.4; }
+
+    /* --- Bandeau d'état (hors connexion, erreurs) --- */
+    #etat {
+      background: #fff3cd; color: #8a6d3b; font-size: 13px;
+      padding: 6px 10px; border-radius: 8px; margin-bottom: 6px;
+    }
+    #etat[hidden] { display: none; }
+
+    /* --- Liste : elle prend toute la place libre et défile toute seule --- */
+    #liste {
+      flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+      border: 1px solid #eee; border-radius: 12px;
+    }
+    .tache {
+      padding: 10px 12px; border-bottom: 1px solid #eee;
+      border-left: 5px solid transparent;
+    }
+    .tache:last-child { border-bottom: 0; }
+    .tache .client { font-weight: 600; }
+    .tache .texte-tache { margin-top: 2px; overflow-wrap: anywhere; }
+    .tache .date { margin-top: 2px; font-size: 12px; color: #888; }
+    .tache.urgent { border-left-color: #d1242f; color: #d1242f; }
+    .tache.perso { border-left-color: #1f6feb; color: #1f6feb; }
+    .vide { padding: 24px; text-align: center; color: #888; }
+
+    /* --- Envoi d'email, compacté --- */
+    #envoi { padding: 8px 0; }
+    #texte {
+      display: block; width: 100%; height: 110px;   /* 4 lignes visibles */
+      font-family: inherit; font-size: 16px; line-height: 1.3;   /* 16 px : évite le zoom automatique d'iOS */
+      border: 1px solid #e6dba0; border-radius: 12px; background: #fffbe0;   /* jaune très clair */
+      padding: 10px 12px; resize: none; outline: none;
+    }
+    #texte:focus { border-color: #1f6feb; }
+    #panneau-compte { background: #f6f8fa; border-radius: 12px; padding: 10px; margin-bottom: 6px; font-size: 14px; }
+    #panneau-compte[hidden] { display: none; }
+    #c-info { margin-bottom: 6px; overflow-wrap: anywhere; white-space: pre-line; }
+    #panneau-compte button {
+      width: 100%; height: 44px; margin-top: 6px; border: 0; border-radius: 10px;
+      background: #1f6feb; color: #fff; font-size: 16px;
+    }
+    #panneau-compte button[hidden] { display: none; }
+    #c-import, #c-deconnexion { background: #555 !important; }
+    #panneau-jeton { padding: 0 0 8px; }
+    #panneau-jeton[hidden] { display: none; }
+    #panneau-jeton input {
+      display: block; width: 100%; height: 44px; padding: 0 12px; font-size: 16px;
+      border: 1px solid #ddd; border-radius: 10px;
+    }
+    #valider-jeton {
+      width: 100%; height: 44px; margin-top: 6px; border: 0; border-radius: 10px;
+      background: #555; color: #fff; font-size: 16px;
+    }
+    #statut { min-height: 1.2em; padding: 4px 2px 0; font-size: 14px; }
+
+    #choix { display: flex; gap: 8px; margin-top: 4px; }
+    #choix button {
+      flex: 1; height: 48px; margin: 0; border: 0; border-radius: 12px;
+      font-family: inherit; font-size: 16px; font-weight: 600;
+      background: #1f6feb; color: #fff;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    #choix button:active { background: #1a5bc4; }
+    #choix button:disabled { opacity: 0.4; }
+    /* Pièce jointe : plus large, fond gris clair. Perso et Pro se partagent la place restante. */
+    #choix #joindre { flex: 0 0 88px; background: #e8e8e8; font-size: 22px; }
+    #choix #joindre:active { background: #d4d4d4; }
+    #nom-fichier { font-size: 13px; color: #666; text-align: center; padding-top: 4px; overflow-wrap: anywhere; }
+    #nom-fichier:empty { display: none; }
+    svg { width: 20px; height: 20px; flex: none; }
+
+    /* --- Sélection d'une tâche + barre d'actions --- */
+    .tache { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .tache.choisie { background: #e3efff; }
+    #ajout { font-size: 28px; font-weight: 300; }
+    #actions { display: flex; gap: 8px; margin-top: 6px; }
+    #actions[hidden] { display: none; }
+    #actions button {
+      flex: 1; height: 44px; margin: 0; padding: 0;
+      border: 0; border-radius: 12px; background: #f0f0f0;
+      font-size: 20px; color: #222;
+    }
+    #actions button:active { background: #dcdcdc; }
+    #actions button:disabled { opacity: 0.35; }
+
+    /* --- Formulaire « Nouvelle tâche » (posé en haut : le clavier ne le cache pas) --- */
+    #voile {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10;
+      background: rgba(0, 0, 0, 0.35); overflow-y: auto;
+      display: flex; align-items: flex-start; justify-content: center;
+      padding: calc(env(safe-area-inset-top) + 12px) 12px 12px;
+    }
+    #voile[hidden] { display: none; }
+    #formulaire { width: 100%; max-width: 456px; background: #fff; border-radius: 16px; padding: 16px; }
+    #formulaire h2 { margin: 0 0 4px; font-size: 18px; }
+    #formulaire label { display: block; margin-top: 10px; font-size: 13px; color: #666; }
+    #formulaire input[type=text], #formulaire input[type=date] {
+      display: block; width: 100%; height: 44px; margin-top: 4px; padding: 0 12px;
+      font-family: inherit; font-size: 16px; background: #fff;
+      border: 1px solid #ddd; border-radius: 10px;
+    }
+    #f-statuts { display: flex; gap: 8px; margin-top: 12px; }
+    #f-statuts button {
+      flex: 1; height: 44px; border: 2px solid transparent; border-radius: 10px;
+      background: #f0f0f0; font-family: inherit; font-size: 15px; color: #222;
+    }
+    #f-statuts button.sel { border-color: #1f6feb; background: #e8f0fe; }
+    #f-erreur { min-height: 1.2em; margin-top: 8px; font-size: 14px; color: crimson; }
+    #f-boutons { display: flex; gap: 8px; margin-top: 8px; }
+    #f-boutons button {
+      flex: 1; height: 48px; border: 0; border-radius: 12px;
+      font-family: inherit; font-size: 16px; font-weight: 600;
+      background: #f0f0f0; color: #222;
+    }
+    #f-boutons #f-valider { background: #1f6feb; color: #fff; }
+    #f-boutons button:disabled { opacity: 0.4; }
+  </style>
+</head>
+<body>
+  <div id="entete">
+    <h1>Tâches</h1>
+    <span id="maj"></span>
+    <button id="ajout" class="icone" type="button" aria-label="Ajouter une tâche">+</button>
+    <button id="btn-compte" class="icone" type="button" aria-label="Compte Google">👤</button>
+    <button id="btn-jeton" class="icone" type="button" aria-label="Jeton d'envoi">🔑</button>
+    <a class="icone" href="admin.html" aria-label="Réglages">⚙</a>
+  </div>
+  <div id="etat" hidden></div>
+  <div id="panneau-compte" hidden>
+    <div id="c-info">Non connecté</div>
+    <button type="button" id="c-connexion">Se connecter avec Google</button>
+    <button type="button" id="c-import" hidden>Importer les tâches de l'ancien serveur</button>
+    <button type="button" id="c-deconnexion" hidden>Se déconnecter</button>
+  </div>
+  <div id="liste"></div>
+
+  <!-- Barre d'actions : visible seulement quand une tâche est touchée -->
+  <div id="actions" hidden>
+    <button id="act-statut" type="button" aria-label="Changer la couleur">🔴</button>
+    <button id="act-haut" type="button" aria-label="Monter">▲</button>
+    <button id="act-bas" type="button" aria-label="Descendre">▼</button>
+    <button id="act-suppr" type="button" aria-label="Supprimer">🗑</button>
+  </div>
+
+  <div id="envoi">
+    <div id="panneau-jeton" hidden>
+      <input type="password" id="champ-jeton" placeholder="Jeton secret d'envoi (Google)" autocomplete="off">
+      <button type="button" id="valider-jeton">Enregistrer le jeton</button>
+    </div>
+    <textarea id="texte" placeholder="Note rapide..."></textarea>
+    <div id="statut"></div>
+
+    <input type="file" id="fichier" hidden>
+    <div id="choix">
+      <button id="perso" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+          <path d="M3 7l9 6 9-6"></path>
+        </svg>
+        Perso
+      </button>
+      <button id="pro" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+          <path d="M3 7l9 6 9-6"></path>
+        </svg>
+        Pro
+      </button>
+      <button id="joindre" type="button" aria-label="Joindre un fichier">📎</button>
+    </div>
+    <div id="nom-fichier"></div>
+  </div>
+
+  <!-- Formulaire « Nouvelle tâche » -->
+  <div id="voile" hidden>
+    <form id="formulaire" autocomplete="off">
+      <h2>Nouvelle tâche</h2>
+      <label for="f-client">Client</label>
+      <input id="f-client" type="text" maxlength="100" autocapitalize="words">
+      <label for="f-tache">Tâche</label>
+      <input id="f-tache" type="text" maxlength="500" autocapitalize="sentences">
+      <label for="f-date">Date de création</label>
+      <input id="f-date" type="date">
+      <div id="f-statuts">
+        <button type="button" data-statut="normal" class="sel">Normal</button>
+        <button type="button" data-statut="urgent">🔴 Urgent</button>
+        <button type="button" data-statut="perso">🔵 Perso</button>
+      </div>
+      <div id="f-erreur"></div>
+      <div id="f-boutons">
+        <button type="button" id="f-annuler">Annuler</button>
+        <button type="submit" id="f-valider">Ajouter</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    // ====================================================================
+    //  PARTIE 1 : ENVOI D'EMAIL (via Google Apps Script)
+    // ====================================================================
+    // Adresse du script Google (pas secrète : sans le jeton elle ne sert à rien)
+    const URL_SCRIPT = "https://script.google.com/macros/s/AKfycbxZNP6T97iUzMUSLLJ2VTOrQp8TZamFu6EV00ecfW0cYYiH28kSmqangnssiZcXRsNPQw/exec";
+    const TAILLE_MAX = 15 * 1024 * 1024; // 15 Mo (le script accepte jusqu'à 18 Mo)
+
+    const zoneTexte = document.getElementById("texte");
+    const fichier = document.getElementById("fichier");
+    const joindre = document.getElementById("joindre");
+    const nomFichier = document.getElementById("nom-fichier");
+    const boutonPerso = document.getElementById("perso");
+    const boutonPro = document.getElementById("pro");
+
+    // Adresse 1 = Perso, Adresse 2 = Pro (réglées dans ⚙ Admin)
+    const adresses = {
+      perso: localStorage.getItem("adresse1") || "",
+      pro: localStorage.getItem("adresse2") || ""
+    };
+
+    // Jeton d'envoi : clé "token2" à part (le jeton "token" des tâches n'est pas touché)
+    const panneauJeton = document.getElementById("panneau-jeton");
+    const champJeton = document.getElementById("champ-jeton");
+    document.getElementById("btn-jeton").onclick = function () {
+      panneauJeton.hidden = !panneauJeton.hidden;
+    };
+    document.getElementById("valider-jeton").onclick = function () {
+      const v = champJeton.value.trim();
+      if (!v) { afficher("Jeton vide.", true); return; }
+      localStorage.setItem("token2", v);
+      champJeton.value = "";
+      panneauJeton.hidden = true;
+      afficher("Jeton enregistré ✔", false);
+    };
+
+    // Lit un fichier et renvoie son contenu en base64
+    function lireBase64(f) {
+      return new Promise(function (ok, ko) {
+        const lecteur = new FileReader();
+        lecteur.onload = function () { ok(String(lecteur.result).split(",")[1] || ""); };
+        lecteur.onerror = function () { ko(lecteur.error); };
+        lecteur.readAsDataURL(f);
+      });
+    }
+
+    // Efface l'ancien message d'erreur dès qu'on retape
+    zoneTexte.oninput = function () { afficher("", false); };
+
+    joindre.onclick = function () { fichier.click(); };
+
+    fichier.onchange = function () {
+      if (fichier.files.length === 0) {
+        nomFichier.textContent = "";
+        return;
+      }
+      const f = fichier.files[0];
+      if (f.size > TAILLE_MAX) {
+        const mo = (f.size / 1024 / 1024).toFixed(1);
+        afficher("Fichier trop lourd (" + mo + " Mo). Maximum : 15 Mo.", true);
+        fichier.value = "";
+        nomFichier.textContent = "";
+        return;
+      }
+      nomFichier.textContent = "📎 " + f.name;
+    };
+
+    // --- Sons générés par le code (aucun fichier audio) ---
+    let audio = null;
+    function debloquerSon() {
+      // À appeler pendant le tap : iOS n'autorise le son qu'après un geste
+      try {
+        if (!audio) { audio = new (window.AudioContext || window.webkitAudioContext)(); }
+        if (audio.state === "suspended") { audio.resume(); }
+      } catch (e) { audio = null; }
+    }
+    function note(freq, debut, duree, type) {
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      const t0 = audio.currentTime + debut;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duree);
+      osc.connect(gain);
+      gain.connect(audio.destination);
+      osc.start(t0);
+      osc.stop(t0 + duree + 0.05);
+    }
+    function sonSucces() {   // deux notes qui montent : « c'est parti »
+      if (!audio) return;
+      note(784, 0, 0.14, "sine");
+      note(1175, 0.14, 0.22, "sine");
+    }
+    function sonErreur() {   // deux notes graves qui descendent : « raté »
+      if (!audio) return;
+      note(330, 0, 0.18, "square");
+      note(220, 0.18, 0.3, "square");
+    }
+
+    function afficher(message, estErreur) {
+      const zone = document.getElementById("statut");
+      zone.textContent = message;
+      zone.style.color = estErreur ? "crimson" : "green";
+    }
+
+    // Un tap sur Perso ou Pro envoie directement
+    async function envoyer(nom) {
+      debloquerSon();
+      const token = localStorage.getItem("token2") || "";
+
+      if (!adresses[nom]) {
+        afficher("Adresse « " + nom + " » non renseignée dans ⚙ Admin.", true);
+        sonErreur();
+        return;
+      }
+      if (!token) {
+        afficher("Renseigne d'abord le jeton (bouton 🔑 en haut).", true);
+        sonErreur();
+        return;
+      }
+      if (zoneTexte.value.trim() === "") {
+        afficher("Écris d'abord un message.", true);
+        sonErreur();
+        return;
+      }
+
+      // Les deux boutons sont bloqués pendant l'envoi (pas de double envoi)
+      boutonPerso.disabled = true;
+      boutonPro.disabled = true;
+      afficher("Envoi en cours...", false);
+
+      try {
+        const colis = { token: token, destinataire: adresses[nom], texte: zoneTexte.value };
+        if (fichier.files.length > 0) {
+          const f = fichier.files[0];
+          colis.fichier = {
+            nom: f.name,
+            type: f.type || "application/octet-stream",
+            base64: await lireBase64(f)
+          };
+        }
+
+        // text/plain : requête « simple », sans pré-vérification CORS (Apps Script n'en gère pas)
+        const reponse = await fetch(URL_SCRIPT, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(colis)
+        });
+
+        // La réponse n'est pas toujours du JSON (ex. page d'erreur d'un intermédiaire)
+        let resultat = {};
+        try {
+          resultat = JSON.parse(await reponse.text());
+        } catch (e) {
+          resultat = {};
+        }
+
+        if (reponse.ok && resultat.ok) {
+          afficher("Message envoyé à " + nom + " ✔", false);
+          sonSucces();
+          zoneTexte.value = "";
+          fichier.value = "";
+          nomFichier.textContent = "";
+        } else {
+          afficher("Échec : " + (resultat.erreur || "erreur " + reponse.status), true);
+          sonErreur();
+        }
+      } catch (e) {
+        afficher("Serveur injoignable (réseau ?)", true);
+        sonErreur();
+      }
+
+      boutonPerso.disabled = false;
+      boutonPro.disabled = false;
+    }
+
+    boutonPerso.onclick = function () { envoyer("perso"); };
+    boutonPro.onclick = function () { envoyer("pro"); };
+
+    // (La partie 2 : tâches, est dans le second script ci-dessous.)
+  </script>
+  <script type="module">
+    // ====================================================================
+    //  PARTIE 2 : TÂCHES (Firebase : Firestore + connexion Google)
+    // ====================================================================
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut }
+      from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+    import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager,
+             memoryLocalCache, collection, doc, onSnapshot, writeBatch, setDoc, updateDoc, deleteDoc }
+      from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+
+    // Configuration publique du projet (ce n'est pas un secret : la sécurité vient des règles Firestore)
+    const firebaseConfig = {
+      apiKey: "AIzaSyC6l8JZd2xbYyaAje3zdu4yZkKXbjspgvg",
+      authDomain: "boomrang-taches.firebaseapp.com",
+      projectId: "boomrang-taches",
+      storageBucket: "boomrang-taches.firebasestorage.app",
+      messagingSenderId: "159129337720",
+      appId: "1:159129337720:web:6fd744884dedd923cd928d"
+    };
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    let db;
+    try {
+      // Copie locale : la liste reste visible hors connexion
+      db = initializeFirestore(app, {
+        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+      });
+    } catch (e) {
+      db = getFirestore(app);
+    }
+
+    const $ = function (id) { return document.getElementById(id); };
+    const COL = "taches";
+    const CYCLE = ["normal", "urgent", "perso"];   // clic après clic : normal -> rouge -> bleu -> normal
+    const SUIVANT = { normal: "🔴", urgent: "🔵", perso: "⚪" };   // ce que le bouton annonce
+    const refTache = function (id) { return doc(db, COL, String(id)); };
+
+    let taches = [];          // la liste affichée à l'écran
+    let selection = null;     // identifiant de la tâche touchée
+    let utilisateur = null;   // compte Google connecté
+    let desabonner = null;    // arrêt de l'écoute en direct
+    let garderVisible = false;
+
+    function etat(message) {
+      const bandeau = $("etat");
+      bandeau.textContent = message;
+      bandeau.hidden = (message === "");
+    }
+
+    function erreurFirestore(e) {
+      const code = (e && e.code) || "";
+      if (code === "permission-denied") {
+        etat("⚠ Accès refusé par Firestore (compte non autorisé ou règles non publiées)");
+      } else {
+        etat("⚠ Erreur : " + (code || (e && e.message) || e));
+      }
+    }
+
+    // Affiche ou cache la barre d'actions, et règle ses boutons
+    function majActions() {
+      const barre = $("actions");
+      const i = taches.findIndex(function (t) { return t.id === selection; });
+      barre.hidden = (i === -1);
+      if (i === -1) return;
+      $("act-statut").textContent = SUIVANT[taches[i].statut] || "🔴";
+      $("act-haut").disabled = (i === 0);
+      $("act-bas").disabled = (i === taches.length - 1);
+    }
+
+    function dessiner(voir) {
+      const zone = $("liste");
+      const defilement = zone.scrollTop;
+      zone.textContent = "";
+      if (selection !== null && !taches.some(function (t) { return t.id === selection; })) {
+        selection = null;
+      }
+      if (taches.length === 0) {
+        const vide = document.createElement("div");
+        vide.className = "vide";
+        vide.textContent = utilisateur ? "Aucune tâche" : "Non connecté";
+        zone.appendChild(vide);
+      }
+      taches.forEach(function (t) {
+        const carte = document.createElement("div");
+        carte.className = "tache " + t.statut + (t.id === selection ? " choisie" : "");
+        carte.dataset.id = t.id;
+        // textContent (et non innerHTML) : un texte de tâche n'est jamais interprété comme du code
+        const client = document.createElement("div");
+        client.className = "client";
+        client.textContent = t.client;
+        const texte = document.createElement("div");
+        texte.className = "texte-tache";
+        texte.textContent = t.tache;
+        const date = document.createElement("div");
+        date.className = "date";
+        date.textContent = t.date;
+        carte.append(client, texte, date);
+        zone.appendChild(carte);
+      });
+      zone.scrollTop = defilement;
+      majActions();
+      if (voir) {
+        const choisie = zone.querySelector(".choisie");
+        if (choisie) { choisie.scrollIntoView({ block: "nearest" }); }
+      }
+    }
+
+    // --- Écoute en direct de la liste (mise à jour automatique, iPhone et PC) ---
+    function ecouter() {
+      if (desabonner) { desabonner(); desabonner = null; }
+      if (!utilisateur) {
+        taches = [];
+        selection = null;
+        dessiner();
+        etat("⚠ Non connecté : touche 👤 pour te connecter avec Google");
+        return;
+      }
+      etat("");
+      desabonner = onSnapshot(collection(db, COL), function (snap) {
+        taches = snap.docs.map(function (d) {
+          const x = d.data();
+          return { id: Number(d.id), client: x.client || "", tache: x.tache || "",
+                   date: x.date || "", statut: x.statut || "normal",
+                   ordre: (typeof x.ordre === "number") ? x.ordre : 1e9 };
+        }).sort(function (a, b) { return (a.ordre - b.ordre) || (a.id - b.id); });
+        dessiner(garderVisible);
+        garderVisible = false;
+        etat((snap.metadata.fromCache && !navigator.onLine)
+          ? "⚠ Hors connexion : les modifications partiront au retour du réseau" : "");
+        $("maj").textContent =
+          new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      }, erreurFirestore);
+    }
+
+    function modifsPossibles() {
+      if (utilisateur) { return true; }
+      etat("⚠ Non connecté : touche 👤 pour te connecter avec Google");
+      return false;
+    }
+
+    // --- Compte Google ---
+    $("btn-compte").onclick = function () { $("panneau-compte").hidden = !$("panneau-compte").hidden; };
+
+    $("c-connexion").onclick = async function () {
+      try {
+        const fournisseur = new GoogleAuthProvider();
+        fournisseur.setCustomParameters({ prompt: "select_account" });
+        await signInWithPopup(auth, fournisseur);
+      } catch (e) {
+        $("c-info").textContent = "Connexion impossible : " + (e.code || e.message);
+      }
+    };
+    $("c-deconnexion").onclick = function () { signOut(auth); };
+
+    onAuthStateChanged(auth, function (u) {
+      utilisateur = u;
+      $("c-connexion").hidden = !!u;
+      $("c-deconnexion").hidden = !u;
+      $("c-import").hidden = !u;
+      $("c-info").textContent = u ? ("Connecté : " + (u.email || "") + "\nUID : " + u.uid) : "Non connecté";
+      if (u) { $("panneau-compte").hidden = true; } else { $("panneau-compte").hidden = false; }
+      ecouter();
+    });
+
+    // --- Import unique depuis l'ancien serveur PythonAnywhere ---
+    $("c-import").onclick = async function () {
+      const serveur = (localStorage.getItem("serveur") || "").replace(/\/+$/, "");
+      const token = localStorage.getItem("token") || "";
+      if (!serveur || !token) {
+        $("c-info").textContent = "Renseigne d'abord le serveur et le mot de passe dans ⚙ Admin.";
+        return;
+      }
+      try {
+        const rep = await fetch(serveur + "/taches", { headers: { "X-Access-Token": token } });
+        const data = await rep.json();
+        if (!rep.ok || !data.ok || !Array.isArray(data.taches)) { throw new Error("réponse inattendue"); }
+        const liste = data.taches;
+        if (!confirm("Importer " + liste.length + " tâche(s) dans Firebase ?\n(écrase les tâches de même numéro)")) { return; }
+        const lot = writeBatch(db);
+        liste.forEach(function (t, k) {
+          lot.set(refTache(t.id), {
+            id: Number(t.id), client: t.client, tache: t.tache,
+            date: t.date, statut: t.statut, ordre: k
+          });
+        });
+        await lot.commit();
+        $("c-info").textContent = liste.length + " tâche(s) importée(s) ✔";
+      } catch (e) {
+        $("c-info").textContent = "Import impossible : " + (e.code || e.message || e);
+      }
+    };
+
+    // --- Toucher une tâche = la sélectionner (retoucher = désélectionner) ---
+    $("liste").onclick = function (e) {
+      const carte = e.target.closest(".tache");
+      if (!carte) { return; }
+      const id = Number(carte.dataset.id);
+      selection = (selection === id) ? null : id;
+      dessiner(true);
+    };
+
+    // --- Barre d'actions ---
+    $("act-statut").onclick = function () {
+      if (!modifsPossibles()) { return; }
+      const t = taches.find(function (x) { return x.id === selection; });
+      if (!t) { return; }
+      const suivant = CYCLE[(CYCLE.indexOf(t.statut) + 1) % CYCLE.length];
+      updateDoc(refTache(t.id), { statut: suivant }).catch(erreurFirestore);
+    };
+
+    function deplacer(sens) {
+      if (!modifsPossibles()) { return; }
+      const i = taches.findIndex(function (t) { return t.id === selection; });
+      const j = i + sens;
+      if (i === -1 || j < 0 || j >= taches.length) { return; }
+      const copie = taches.slice();
+      const t = copie.splice(i, 1)[0];
+      copie.splice(j, 0, t);
+      const lot = writeBatch(db);
+      copie.forEach(function (x, k) {
+        if (x.ordre !== k) { lot.update(refTache(x.id), { ordre: k }); }
+      });
+      garderVisible = true;
+      lot.commit().catch(erreurFirestore);
+    }
+    $("act-haut").onclick = function () { deplacer(-1); };
+    $("act-bas").onclick = function () { deplacer(+1); };
+
+    $("act-suppr").onclick = function () {
+      if (!modifsPossibles()) { return; }
+      const id = selection;
+      if (id === null) { return; }
+      if (!confirm("Supprimer cette tâche ?\n(pas d'archivage)")) { return; }
+      selection = null;
+      deleteDoc(refTache(id)).catch(erreurFirestore);
+    };
+
+    // --- Formulaire « Nouvelle tâche » ---
+    let statutChoisi = "normal";
+
+    function choisirStatut(valeur) {
+      statutChoisi = valeur;
+      document.querySelectorAll("#f-statuts button").forEach(function (b) {
+        b.classList.toggle("sel", b.dataset.statut === valeur);
+      });
+    }
+    document.querySelectorAll("#f-statuts button").forEach(function (b) {
+      b.onclick = function () { choisirStatut(b.dataset.statut); };
+    });
+
+    function dateDuJourISO() {
+      const d = new Date();
+      const deux = function (n) { return String(n).padStart(2, "0"); };
+      return d.getFullYear() + "-" + deux(d.getMonth() + 1) + "-" + deux(d.getDate());
+    }
+
+    function ouvrirFormulaire() {
+      if (!modifsPossibles()) { return; }
+      $("f-client").value = "";
+      $("f-tache").value = "";
+      $("f-date").value = dateDuJourISO();
+      $("f-erreur").textContent = "";
+      choisirStatut("normal");
+      $("voile").hidden = false;
+      $("f-client").focus();
+    }
+    function fermerFormulaire() { $("voile").hidden = true; }
+
+    $("ajout").onclick = ouvrirFormulaire;
+    $("f-annuler").onclick = fermerFormulaire;
+    $("voile").onclick = function (e) {
+      if (e.target === this) { fermerFormulaire(); }
+    };
+
+    $("formulaire").onsubmit = function (e) {
+      e.preventDefault();
+      const client = $("f-client").value.trim();
+      const tache = $("f-tache").value.trim();
+      const iso = $("f-date").value || dateDuJourISO();
+      if (!client || !tache) {
+        $("f-erreur").textContent = "Client et tâche sont obligatoires.";
+        return;
+      }
+      const id = Date.now();   // numéro basé sur l'heure : iPhone et PC ne créent jamais le même
+      const ordre = taches.length ? Math.max.apply(null, taches.map(function (t) { return t.ordre === 1e9 ? taches.length : t.ordre; })) + 1 : 0;
+      setDoc(refTache(id), {
+        id: id, client: client, tache: tache,
+        date: iso.split("-").reverse().join("/"),   // aaaa-mm-jj -> jj/mm/aaaa
+        statut: statutChoisi, ordre: ordre
+      }).catch(erreurFirestore);
+      fermerFormulaire();
+      garderVisible = false;
+      const zone = $("liste");
+      setTimeout(function () { zone.scrollTop = zone.scrollHeight; }, 100);   // la nouvelle tâche est en bas
+    };
+
+    dessiner();
+  </script>
+
+</body>
+</html>

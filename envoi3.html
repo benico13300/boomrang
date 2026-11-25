@@ -48,6 +48,15 @@
       border-left: 5px solid transparent;
     }
     .tache:last-child { border-bottom: 0; }
+    .tache { display: flex; align-items: center; gap: 8px; }
+    .tache .contenu { flex: 1; min-width: 0; }
+    /* Priorité : petit rond numéroté (1 à 3), un clic change la valeur */
+    .zone-rond { flex: none; padding: 5px; margin: -5px 0 -5px -5px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .rond {
+      width: 26px; height: 26px; border-radius: 50%; border: 2px solid currentColor;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700; line-height: 1;
+    }
     .tache .client { font-weight: 600; }
     .tache .texte-tache { margin-top: 2px; overflow-wrap: anywhere; }
     .tache .date { margin-top: 2px; font-size: 12px; color: #888; }
@@ -465,6 +474,8 @@
     let desabonner = null;    // arrêt de l'écoute en direct
     let garderVisible = false;
 
+    function prioriteValide(p) { return (p === 1 || p === 2 || p === 3) ? p : 1; }
+
     function etat(message) {
       const bandeau = $("etat");
       bandeau.textContent = message;
@@ -518,7 +529,16 @@
         const date = document.createElement("div");
         date.className = "date";
         date.textContent = t.date;
-        carte.append(client, texte, date);
+        const contenu = document.createElement("div");
+        contenu.className = "contenu";
+        contenu.append(client, texte, date);
+        const zoneRond = document.createElement("div");
+        zoneRond.className = "zone-rond";
+        const rond = document.createElement("div");
+        rond.className = "rond";
+        rond.textContent = String(t.priorite);
+        zoneRond.appendChild(rond);
+        carte.append(zoneRond, contenu);
         zone.appendChild(carte);
       });
       zone.scrollTop = defilement;
@@ -545,6 +565,7 @@
           const x = d.data();
           return { id: Number(d.id), client: x.client || "", tache: x.tache || "",
                    date: x.date || "", statut: x.statut || "normal",
+                   priorite: prioriteValide(x.priorite),
                    ordre: (typeof x.ordre === "number") ? x.ordre : 1e9 };
         }).sort(function (a, b) { return (a.ordre - b.ordre) || (a.id - b.id); });
         if (glissement) {
@@ -592,12 +613,28 @@
     // --- Toucher une tâche = la sélectionner (retoucher = désélectionner) ---
     $("liste").onclick = function (e) {
       if (Date.now() < ignorerClicJusqua) { return; }   // fin d'un glisser-déposer : pas une sélection
+      const zoneRond = e.target.closest(".zone-rond");
+      if (zoneRond) {                                   // clic sur le rond : la priorité change
+        changerPriorite(Number(zoneRond.closest(".tache").dataset.id));
+        return;
+      }
       const carte = e.target.closest(".tache");
       if (!carte) { return; }
       const id = Number(carte.dataset.id);
       selection = (selection === id) ? null : id;
       dessiner(true);
     };
+
+    // --- Priorité : 1 -> 2 -> 3 -> 1 ---
+    function changerPriorite(id) {
+      if (!modifsPossibles()) { return; }
+      const t = taches.find(function (x) { return x.id === id; });
+      if (!t) { return; }
+      const lot = writeBatch(db);
+      lot.update(refTache(id), { priorite: (t.priorite % 3) + 1 });
+      signaler(lot);
+      lot.commit().catch(erreurFirestore);
+    }
 
     // --- Glisser-déposer : maintenir le doigt sur une tâche, puis la faire monter ou descendre ---
     const DELAI_APPUI_MS = 350;   // durée d'appui avant que la tâche « se décolle »
@@ -706,7 +743,7 @@
     $("liste").addEventListener("touchstart", function (e) {
       if (e.touches.length !== 1 || glissement) { return; }
       const carte = e.target.closest(".tache");
-      if (!carte) { return; }
+      if (!carte || e.target.closest(".zone-rond")) { return; }
       const t = e.touches[0];
       appui = { carte: carte, x: t.clientX, y: t.clientY,
                 minuteur: setTimeout(demarrerGlissement, DELAI_APPUI_MS) };
@@ -832,7 +869,7 @@
       lot.set(refTache(id), {
         id: id, client: client, tache: tache,
         date: iso.split("-").reverse().join("/"),   // aaaa-mm-jj -> jj/mm/aaaa
-        statut: statutChoisi, ordre: ordre
+        statut: statutChoisi, ordre: ordre, priorite: 1
       });
       signaler(lot);
       lot.commit().catch(erreurFirestore);

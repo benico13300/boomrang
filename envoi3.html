@@ -104,6 +104,14 @@
     /* --- Sélection d'une tâche + barre d'actions --- */
     .tache { cursor: pointer; -webkit-tap-highlight-color: transparent; }
     .tache.choisie { background: #e3efff; }
+    /* Glisser-déposer : pas de menu ni de sélection de texte pendant l'appui prolongé */
+    .tache { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .tache.glisse {
+      position: relative; z-index: 5; background: #fff8d6;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+    }
+    .tache.ligne-avant { box-shadow: inset 0 4px 0 #1f6feb; }    /* trait bleu : la tâche se posera ici */
+    .tache.ligne-apres { box-shadow: inset 0 -4px 0 #1f6feb; }
     #ajout { font-size: 28px; font-weight: 300; }
     #actions { display: flex; gap: 8px; margin-top: 6px; }
     #actions[hidden] { display: none; }
@@ -539,8 +547,12 @@
                    date: x.date || "", statut: x.statut || "normal",
                    ordre: (typeof x.ordre === "number") ? x.ordre : 1e9 };
         }).sort(function (a, b) { return (a.ordre - b.ordre) || (a.id - b.id); });
-        dessiner(garderVisible);
-        garderVisible = false;
+        if (glissement) {
+          rafraichirApres = true;   // on ne touche pas à l'écran pendant que tu déplaces une tâche
+        } else {
+          dessiner(garderVisible);
+          garderVisible = false;
+        }
         etat((snap.metadata.fromCache && !navigator.onLine)
           ? "⚠ Hors connexion : les modifications partiront au retour du réseau" : "");
         $("maj").textContent =
@@ -579,12 +591,151 @@
 
     // --- Toucher une tâche = la sélectionner (retoucher = désélectionner) ---
     $("liste").onclick = function (e) {
+      if (Date.now() < ignorerClicJusqua) { return; }   // fin d'un glisser-déposer : pas une sélection
       const carte = e.target.closest(".tache");
       if (!carte) { return; }
       const id = Number(carte.dataset.id);
       selection = (selection === id) ? null : id;
       dessiner(true);
     };
+
+    // --- Glisser-déposer : maintenir le doigt sur une tâche, puis la faire monter ou descendre ---
+    const DELAI_APPUI_MS = 350;   // durée d'appui avant que la tâche « se décolle »
+    const TOLERANCE_PX = 10;      // si le doigt bouge avant : c'est un défilement normal
+    let appui = null;             // appui en cours (avant que la tâche se décolle)
+    let glissement = null;        // glissement en cours
+    let ignorerClicJusqua = 0;
+    let rafraichirApres = false;
+
+    // Où déposer ? Renvoie l'index (dans la liste SANS la tâche déplacée) devant lequel l'insérer.
+    // « milieux » = hauteur du milieu de chaque autre tâche, de haut en bas.
+    function indexCible(doigtY, milieux) {
+      for (let i = 0; i < milieux.length; i++) {
+        if (doigtY < milieux[i]) { return i; }
+      }
+      return milieux.length;
+    }
+
+    function autresCartes() {
+      return Array.from($("liste").querySelectorAll(".tache")).filter(function (c) {
+        return !glissement || c !== glissement.carte;
+      });
+    }
+
+    function majGlissement() {
+      const g = glissement;
+      const zone = $("liste");
+      // la tâche suit le doigt (en tenant compte du défilement automatique)
+      const decalage = (g.doigtY - g.departY) + (zone.scrollTop - g.departScroll);
+      g.carte.style.transform = "translateY(" + decalage + "px) scale(1.02)";
+      const autres = autresCartes();
+      autres.forEach(function (c) { c.classList.remove("ligne-avant", "ligne-apres"); });
+      const milieux = autres.map(function (c) {
+        const r = c.getBoundingClientRect();
+        return r.top + r.height / 2;
+      });
+      g.cible = indexCible(g.doigtY, milieux);
+      if (autres.length) {
+        if (g.cible < autres.length) { autres[g.cible].classList.add("ligne-avant"); }
+        else { autres[autres.length - 1].classList.add("ligne-apres"); }
+      }
+    }
+
+    // Près du bord haut ou bas de la liste, elle défile toute seule
+    function boucleDefilement() {
+      if (!glissement) { return; }
+      const zone = $("liste");
+      const r = zone.getBoundingClientRect();
+      const marge = 50;
+      let vitesse = 0;
+      if (glissement.doigtY < r.top + marge) {
+        vitesse = -Math.ceil((r.top + marge - glissement.doigtY) / 4);
+      } else if (glissement.doigtY > r.bottom - marge) {
+        vitesse = Math.ceil((glissement.doigtY - (r.bottom - marge)) / 4);
+      }
+      if (vitesse !== 0) {
+        zone.scrollTop += vitesse;
+        majGlissement();
+      }
+      requestAnimationFrame(boucleDefilement);
+    }
+
+    function demarrerGlissement() {
+      if (!appui) { return; }
+      glissement = {
+        carte: appui.carte, id: Number(appui.carte.dataset.id),
+        departY: appui.y, departScroll: $("liste").scrollTop, doigtY: appui.y, cible: 0
+      };
+      appui.carte.classList.add("glisse");
+      appui = null;
+      majGlissement();
+      requestAnimationFrame(boucleDefilement);
+    }
+
+    // Écrit le nouvel ordre dans Firebase (comme les flèches ▲ ▼)
+    function placer(id, index) {
+      if (!modifsPossibles()) { return; }
+      const tache = taches.find(function (x) { return x.id === id; });
+      if (!tache) { return; }
+      const copie = taches.filter(function (x) { return x.id !== id; });
+      copie.splice(index, 0, tache);
+      if (copie.every(function (x, k) { return x.id === taches[k].id; })) { return; }   // n'a pas bougé
+      selection = id;
+      const lot = writeBatch(db);
+      copie.forEach(function (x, k) {
+        if (x.ordre !== k) { lot.update(refTache(x.id), { ordre: k }); }
+      });
+      signaler(lot);
+      garderVisible = true;
+      lot.commit().catch(erreurFirestore);
+    }
+
+    function terminerGlissement(valider) {
+      const g = glissement;
+      glissement = null;
+      g.carte.classList.remove("glisse");
+      g.carte.style.transform = "";
+      $("liste").querySelectorAll(".ligne-avant, .ligne-apres").forEach(function (c) {
+        c.classList.remove("ligne-avant", "ligne-apres");
+      });
+      ignorerClicJusqua = Date.now() + 500;
+      if (valider) { placer(g.id, g.cible); }
+      if (rafraichirApres) { rafraichirApres = false; dessiner(); }
+    }
+
+    $("liste").addEventListener("touchstart", function (e) {
+      if (e.touches.length !== 1 || glissement) { return; }
+      const carte = e.target.closest(".tache");
+      if (!carte) { return; }
+      const t = e.touches[0];
+      appui = { carte: carte, x: t.clientX, y: t.clientY,
+                minuteur: setTimeout(demarrerGlissement, DELAI_APPUI_MS) };
+    }, { passive: true });
+
+    $("liste").addEventListener("touchmove", function (e) {
+      const t = e.touches[0];
+      if (glissement) {
+        e.preventDefault();   // la liste ne défile pas pendant que tu déplaces la tâche
+        glissement.doigtY = t.clientY;
+        majGlissement();
+        return;
+      }
+      if (appui && (Math.abs(t.clientX - appui.x) > TOLERANCE_PX ||
+                    Math.abs(t.clientY - appui.y) > TOLERANCE_PX)) {
+        clearTimeout(appui.minuteur);   // le doigt a bougé trop tôt : c'est un simple défilement
+        appui = null;
+      }
+    }, { passive: false });
+
+    function finTouche(e) {
+      if (appui) { clearTimeout(appui.minuteur); appui = null; }
+      if (glissement) {
+        if (e.cancelable) { e.preventDefault(); }
+        terminerGlissement(e.type === "touchend");
+      }
+    }
+    $("liste").addEventListener("touchend", finTouche);
+    $("liste").addEventListener("touchcancel", finTouche);
 
     // --- Barre d'actions ---
     $("act-statut").onclick = function () {
